@@ -1,18 +1,21 @@
 <?php
+
 namespace Cms\Utils;
 
 /**
- * Class LanguageTypos
- *
  * TODO научиться исправлять в тексте ошибки
  *    * с неверно вставленными уникальными символами из другой раскладки: wирк => цирк, цирr => цирк, салют => сал.n
  *    * с дефисами: "Во-первых"
- *
  *
  * @package Cms\Utils
  */
 class LanguageTypos
 {
+    /**
+     * Сопоставление русских букв к английским, которые выглядят одинаково в обоих раскладках клавиатуры
+     *
+     * @var string[]
+     */
     private static $similarRuToEn = [
         //ru => en        //RU => EN
         "\u{0430}" => 'a', "\u{0410}" => 'A',
@@ -30,16 +33,22 @@ class LanguageTypos
     ];
 
     /**
-     * @var array
+     * Сопоставление английских букв к русским, которые выглядят одинаково в обоих раскладках клавиатуры
+     *
+     * @var string[]
      */
     private static $similarEnToRu = null;
 
     /**
-     * @var array
+     * @var string[]
      */
     private static $similarAll = null;
 
-    //QWERTY раскладка клавиатуры для русского и английского языка
+    /**
+     * Сопоставление QWERTY раскладки английского языка к русской
+     *
+     * @var string[]
+     */
     private static $keyboardEnToRu = [
         #[CapsLock] off
         '`' => 'ё',
@@ -121,14 +130,18 @@ class LanguageTypos
     ];
 
     /**
-     * @var array
+     * Сопоставление QWERTY раскладки русского языка к английской
+     *
+     * @var string[]
      */
     private static $keyboardRuToEn = null;
 
     /**
      * Исправляет в тексте опечатки из-за неверной раскладки клавиатуры:
-     *   * в словах на английском языке, ошибочно набранные русские буквы, которые похожи на английские, заменяет на английские буквы
-     *   * в словах на русском языке, ошибочно набранные английские буквы, которые похожи на русские, заменяет на русские буквы
+     *   * в словах на английском языке, ошибочно набранные русские буквы,
+     *     которые похожи на английские, заменяет на английские буквы
+     *   * в словах на русском языке, ошибочно набранные английские буквы,
+     *     которые похожи на русские, заменяет на русские буквы
      * Алгоритм простой, быстрый и 100% надёжный (неоднозначные ситуации не обрабатываются).
      *
      * Описание алгоритма.
@@ -142,8 +155,8 @@ class LanguageTypos
      *          2) Если русских букв больше, то заменяем все английские буквы, похожие на русские, на русские.
      *          3) Если английских букв больше, то заменяем все русские буквы, похожие на английские, на английские.
      *
-     * @param string     $str         текст для обработки
-     * @param array|null &$replaced   заменённые символы с количеством замен, пример:
+     * @param string     $str         Text in UTF-8
+     * @param array|null &$replaced   Заменённые символы с количеством замен, пример:
      *                                   [
      *                                      'с' =>  [
      *                                          'char' => "c",
@@ -154,27 +167,30 @@ class LanguageTypos
      * @return string
      * @throws \Exception
      */
-    public static function correct(string $str, array &$replaced = null) : string {
+    public static function correct(string $str, array &$replaced = null) : string
+    {
         static $pattern = '/
                                 [а-яА-ЯёЁ]+ [a-zA-Z]+ [a-zA-Zа-яА-ЯёЁ]*
                             |   [a-zA-Z]+ [а-яА-ЯёЁ]+ [a-zA-Zа-яА-ЯёЁ]*
                            /suxSX';
 
-        if (strlen($str) < 3) return $str; //speed improve
+        if (strlen($str) < 3) {
+            return $str; //speed improves
+        }
 
         if (! is_array(static::$similarAll)) {
             static::$similarEnToRu = array_flip(static::$similarRuToEn);
             static::$similarAll    = static::$similarEnToRu + static::$similarRuToEn;
         }
 
-        $str = preg_replace_callback($pattern, function (array $matches) use (&$replaced) : string  {
+        $str = preg_replace_callback($pattern, function (array $matches) use (&$replaced) : string {
             $chars = preg_split('//u', $matches[0], -1, PREG_SPLIT_NO_EMPTY);
             $charsTotal = count($chars);
 
-            $charsUniqEnTotal = count(array_filter($chars, function(string $char) : bool {
+            $charsUniqEnTotal = count(array_filter($chars, function (string $char) : bool {
                 return strlen($char) === 1 && ! array_key_exists($char, static::$similarEnToRu);
             }));
-            $charsUniqRuTotal = count(array_filter($chars, function(string $char) : bool {
+            $charsUniqRuTotal = count(array_filter($chars, function (string $char) : bool {
                 return strlen($char) === 2 && ! array_key_exists($char, static::$similarRuToEn);
             }));
 
@@ -183,30 +199,42 @@ class LanguageTypos
                     return strlen($char) === 1;
                 }));
                 $charsRuTotal = $charsTotal - $charsEnTotal;
-                if ($charsEnTotal === $charsRuTotal) return $matches[0];
+                if ($charsEnTotal === $charsRuTotal) {
+                    return $matches[0];
+                }
             }
 
             for ($i = 0; $i < $charsTotal; $i++) {
                 $char = $chars[$i];
-                if (! array_key_exists($char, static::$similarAll)) continue;
+                if (! array_key_exists($char, static::$similarAll)) {
+                    continue;
+                }
 
                 if ($charsUniqEnTotal > $charsUniqRuTotal) {
-                    if (strlen($char) === 1) continue;
+                    if (strlen($char) === 1) {
+                        continue;
+                    }
+                } elseif ($charsUniqEnTotal < $charsUniqRuTotal) {
+                    if (strlen($char) === 2) {
+                        continue;
+                    }
+                } elseif ($charsEnTotal > $charsRuTotal) {
+                    if (strlen($char) === 1) {
+                        continue;
+                    }
+                } elseif ($charsEnTotal < $charsRuTotal) {
+                    if (strlen($char) === 2) {
+                        continue;
+                    }
+                } else {
+                    return $matches[0];
                 }
-                elseif ($charsUniqEnTotal < $charsUniqRuTotal) {
-                    if (strlen($char) === 2) continue;
-                }
-                elseif ($charsEnTotal > $charsRuTotal) {
-                    if (strlen($char) === 1) continue;
-                }
-                elseif ($charsEnTotal < $charsRuTotal) {
-                    if (strlen($char) === 2) continue;
-                }
-                else return $matches[0];
 
                 $chars[$i] = static::$similarAll[$char];
 
-                if (! is_array($replaced)) continue;
+                if (! is_array($replaced)) {
+                    continue;
+                }
                 if (array_key_exists($char, $replaced)) {
                     $replaced[$char]['counter']++;
                 } else {
@@ -244,11 +272,15 @@ class LanguageTypos
      */
     public static function keyboardLayoutConvert(string $text, string $input, string $output) : string
     {
-        if ($input === 'en' && $output === 'ru') return strtr($text, static::$keyboardEnToRu);
+        if ($input === 'en' && $output === 'ru') {
+            return strtr($text, static::$keyboardEnToRu);
+        }
         if (! is_array(static::$keyboardRuToEn)) {
             static::$keyboardRuToEn = array_flip(static::$keyboardEnToRu);
         }
-        if ($input === 'ru' && $output === 'en') return strtr($text, static::$keyboardRuToEn);
+        if ($input === 'ru' && $output === 'en') {
+            return strtr($text, static::$keyboardRuToEn);
+        }
         throw new \Exception("Unsupported keyboard layouts combination: input '$input' and output '$output'");
     }
 
@@ -259,8 +291,8 @@ class LanguageTypos
      * Сценарий использования: если по исходной поисковой фразе ничеге не найдено,
      * то конвертируем текст в другую раскладку клавиатуры и повторяем поиск.
      *
-     * @param string      $text
-     * @param bool|null   &$isConverted  возвращает TRUE, если текст был конвертирован и FALSE в противном случае
+     * @param string      $text          Text in UTF-8
+     * @param bool|null   &$isConverted  Возвращает TRUE, если текст был конвертирован и FALSE в противном случае
      *
      * @return string
      * @throws \Exception

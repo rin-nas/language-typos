@@ -3,9 +3,6 @@
 namespace Cms\Utils;
 
 /**
- * TODO научиться исправлять в тексте ошибки
- *    * с неверно вставленными уникальными символами из другой раскладки: wирк => цирк, цирr => цирк, салют => сал.n
- *    * с дефисами: "Во-первых"
  *
  * @package Cms\Utils
  */
@@ -145,11 +142,14 @@ class LanguageTypos
      * Алгоритм простой, быстрый и 100% надёжный (неоднозначные ситуации не обрабатываются).
      *
      * Описание алгоритма.
-     * 1) Захватываем слово, в котором есть и русские, и английские буквы.
+     * 1) Захватываем слово, в котором есть русские и английские буквы вместе.
      * 2) Смотрим на количество уникальных русских и английских букв в слове:
-     *      1) Если русских букв больше, то заменяем все английские буквы, похожие на русские, на русские.
-     *      2) Если английских букв больше, то заменяем все русские буквы, похожие на английские, на английские.
-     *      3) Если количество уникальных русских и английских букв одинаково, то
+     *      1) Если есть уникальные русские и английских буквы одновременно,
+     *         то пытаемся отделить пробелом прилипшие друг к другу слова в разной раскладке клавиатуры.
+     *         Если не получилось, то возвращаем слово без изменений
+     *      2) Если уникальных русских букв больше, то заменяем все английские буквы, похожие на русские, на русские.
+     *      3) Если уникальных английских букв больше, то заменяем все русские буквы, похожие на английские, на английские.
+     *      4) Если количество уникальных русских и английских букв одинаково, то
      *         смотрим на количество любых русских и английских букв в слове:
      *          1) Если количество русских и английских букв одинаково, то ничего не делаем.
      *          2) Если русских букв больше, то заменяем все английские буквы, похожие на русские, на русские.
@@ -164,11 +164,15 @@ class LanguageTypos
      *                                       ],
      *                                   ]
      *
+     * @param int         $_depth     Защита от зацикливания, служебный параметр
+     *
      * @return string
      * @throws \Exception
      */
-    public static function correct(string $str, array &$replaced = null) : string
+    public static function correct(string $str, array &$replaced = null, int $_depth = 0) : string
     {
+        //TODO научиться исправлять в тексте ошибки с дефисами: "Во-первых"
+        //захватываем слова, в которых есть русские и английские буквы вместе
         static $pattern = '/
                                 [а-яА-ЯёЁ]+ [a-zA-Z]+ [a-zA-Zа-яА-ЯёЁ]*
                             |   [a-zA-Z]+ [а-яА-ЯёЁ]+ [a-zA-Zа-яА-ЯёЁ]*
@@ -183,9 +187,11 @@ class LanguageTypos
             static::$similarAll    = static::$similarEnToRu + static::$similarRuToEn;
         }
 
-        $str = preg_replace_callback($pattern, function (array $matches) use (&$replaced) : string {
-            $chars = preg_split('//u', $matches[0], -1, PREG_SPLIT_NO_EMPTY);
-            $charsTotal = count($chars);
+        $str = preg_replace_callback($pattern, function (array $matches) use (&$replaced, $_depth) : string {
+            $chars = preg_split('//u', $matches[0], null, PREG_SPLIT_NO_EMPTY);
+            if (! is_array($chars)) {
+                return $matches[0];
+            }
 
             $charsUniqEnTotal = count(array_filter($chars, function (string $char) : bool {
                 return strlen($char) === 1 && ! array_key_exists($char, static::$similarEnToRu);
@@ -193,6 +199,30 @@ class LanguageTypos
             $charsUniqRuTotal = count(array_filter($chars, function (string $char) : bool {
                 return strlen($char) === 2 && ! array_key_exists($char, static::$similarRuToEn);
             }));
+
+            //самый плохой случай, когда есть уникальные русские и уникальные английские буквы вместе
+            //скорее всего это прилипшие друг к другу слова на русском и английском, пытаемся разделить их
+            if ($charsUniqEnTotal > 0 && $charsUniqRuTotal > 0) {
+                if ($_depth > 9) {
+                    return $matches[0]; //защита от зацикливания
+                }
+                $inserted = 0;
+                $s = preg_replace(static::getSplitEnRuWordPattern(), '$0 ', $matches[0], 1, $inserted);
+                if (! is_string($s)) {
+                    return $matches[0];
+                }
+                if ($inserted) {
+                    try {
+                        $s = static::correct($s, $replaced, $_depth + 1);
+                    } catch (\Exception $e) {
+                        //падать не имеем права
+                        return $matches[0];
+                    }
+                    return $s;
+                }
+            }
+
+            $charsTotal = count($chars);
 
             if ($charsUniqEnTotal === $charsUniqRuTotal) {
                 $charsEnTotal = count(array_filter($chars, function (string $char): bool {
@@ -206,31 +236,32 @@ class LanguageTypos
 
             for ($i = 0; $i < $charsTotal; $i++) {
                 $char = $chars[$i];
-                if (! array_key_exists($char, static::$similarAll)) {
+                if (array_key_exists($char, static::$similarAll)) {
+                    if ($charsUniqEnTotal > $charsUniqRuTotal) {
+                        if (strlen($char) === 1) {
+                            continue;
+                        }
+                    } elseif ($charsUniqEnTotal < $charsUniqRuTotal) {
+                        if (strlen($char) === 2) {
+                            continue;
+                        }
+                    } elseif ($charsEnTotal > $charsRuTotal) {
+                        if (strlen($char) === 1) {
+                            continue;
+                        }
+                    } elseif ($charsEnTotal < $charsRuTotal) {
+                        if (strlen($char) === 2) {
+                            continue;
+                        }
+                    } else {
+                        return $matches[0];
+                    }
+                    $chars[$i] = static::$similarAll[$char];
+                } else {
+                    //TODO исправлять опечатки с неверно вставленными уникальными символами из другой раскладки:
+                    //wирк => цирк, цирr => цирк, салют => сал.n, опеhатор => оператор
                     continue;
                 }
-
-                if ($charsUniqEnTotal > $charsUniqRuTotal) {
-                    if (strlen($char) === 1) {
-                        continue;
-                    }
-                } elseif ($charsUniqEnTotal < $charsUniqRuTotal) {
-                    if (strlen($char) === 2) {
-                        continue;
-                    }
-                } elseif ($charsEnTotal > $charsRuTotal) {
-                    if (strlen($char) === 1) {
-                        continue;
-                    }
-                } elseif ($charsEnTotal < $charsRuTotal) {
-                    if (strlen($char) === 2) {
-                        continue;
-                    }
-                } else {
-                    return $matches[0];
-                }
-
-                $chars[$i] = static::$similarAll[$char];
 
                 if (! is_array($replaced)) {
                     continue;
@@ -239,7 +270,7 @@ class LanguageTypos
                     $replaced[$char]['counter']++;
                 } else {
                     $replaced[$char] = [
-                        'char' => static::$similarAll[$char],
+                        'char' => $chars[$i],
                         'counter' => 1,
                     ];
                 }
@@ -251,7 +282,7 @@ class LanguageTypos
             $errorMessage = array_flip(get_defined_constants(true)['pcre'])[preg_last_error()];
             throw new \Exception($errorMessage);
         }
-        
+
         return $str;
     }
 
@@ -299,18 +330,169 @@ class LanguageTypos
      */
     public static function keyboardLayoutConvertEnRuAuto(string $text, ?bool &$isConverted = null) : string
     {
-        $existsEn = preg_match('~[a-zA-Z]~s', $text);
-        $existsRu = preg_match('~[а-яёА-ЯЁ]~su', $text);
-        if ($existsEn === 1 && $existsRu === 0) {
+        $hasEn = preg_match('~[a-zA-Z]~sSX', $text);
+        $hasRu = preg_match('~[а-яёА-ЯЁ]~suSX', $text);
+        if ($hasEn === 1 && $hasRu === 0) {
             $isConverted = true;
             return static::keyboardLayoutConvert($text, 'en', 'ru');
         }
-        if ($existsEn === 0 && $existsRu === 1) {
+        if ($hasEn === 0 && $hasRu === 1) {
             $isConverted = true;
             return static::keyboardLayoutConvert($text, 'ru', 'en');
         }
         $isConverted = false;
         return $text;
+    }
+
+    /**
+     * @param string $text
+     *
+     * @return string[]|null     Ассоциативный массив, где
+     *                             * ключи -- это слова в другой раскладке (en/ru) из поискового запроса
+     *                             * значения -- исходные слова из текста
+     * @throws \Exception
+     */
+    public static function getWordsMap(string $text) : ?array
+    {
+        $words = static::getWords($text);
+        //var_export($words); die; //отладка
+        if (! is_array($words)) {
+            return null;
+        }
+        $wordsMap = [
+            static::keyboardLayoutConvertEnRuAuto($text) => $text,
+        ];
+        foreach ($words as $word) {
+            $key = static::keyboardLayoutConvertEnRuAuto($word);
+            $wordsMap[$key] = $word;
+        }
+        return $wordsMap;
+    }
+
+    /**
+     * @param string $text
+     *
+     * @return string[]|null
+     */
+    public static function getWords(string $text) : ?array
+    {
+        $matches = [];
+        if (! preg_match_all(static::getWordsEnRuPattern(), $text, $matches, PREG_SET_ORDER)) {
+            return null;
+        }
+        $words = [];
+        foreach ($matches as $match) {
+            $words[] = $match[0];
+        }
+        return $words;
+    }
+
+    /**
+     * @param string $text
+     *
+     * @return string[]|null
+     */
+    public static function getChunks(string $text) : ?array
+    {
+        $chunks = preg_split(
+            static::getWordsEnRuPattern(),
+            $text,
+            null,
+            PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY
+        );
+        return is_array($chunks) ? $chunks : null;
+    }
+
+
+    /**
+     * Возвращает регулярное выражение для захвата слов на русском или английском языке
+     * с учётом того, что слово может быть введено в другой раскладке клавиатуры
+     *
+     * @return string
+     */
+    protected static function getWordsEnRuPattern() : string
+    {
+        static $pattern = null;
+
+        if (is_string($pattern)) {
+            return $pattern;
+        }
+
+        $chars = array_unique(array_merge(array_keys(static::$keyboardEnToRu), static::$keyboardEnToRu));
+        sort($chars);
+        $chars = preg_replace('~[a-zA-Zа-яёА-ЯЁ]+~suSX', '', implode('', $chars));
+        $chars = static::pregQuoteClass($chars, '~');
+        $charsEn = '(?<en>[a-zA-Z'   . $chars . ']+)';
+        $charsRu = '(?<ru>[а-яёА-ЯЁ' . $chars . ']+)';
+        $pattern = '~' . $charsEn . '|' . $charsRu . '~suSX';
+        return $pattern;
+    }
+
+    /**
+     * Возвращает регулярное выражение для разделения слова,
+     * где есть уникальные русские и уникальные английские слова вместе
+     *
+     * @return string
+     */
+    protected static function getSplitEnRuWordPattern() : string
+    {
+        static $pattern = null;
+
+        if (is_string($pattern)) {
+            return $pattern;
+        }
+
+        $anyEn     = '[a-zA-Z]';
+        $anyRu     = '[а-яА-ЯёЁ]';
+        $anyEnRu   = '[a-zA-Zа-яА-ЯёЁ]';
+        $similarEn = '[' . implode('', static::$similarRuToEn) . ']';
+        $similarRu = '[' . implode('', static::$similarEnToRu) . ']';
+        $uniqEn    = '(?:(?=[a-zA-Z])[^' . implode('', static::$similarRuToEn) . '])';
+        $uniqRu    = '(?:(?=[а-яА-ЯёЁ])[^' . implode('', static::$similarEnToRu) . '])';
+        $pattern = "/  $anyEn
+                       $similarRu*
+                       $uniqEn+
+                       $similarEn*
+                       (?=
+                           $similarRu*
+                           $uniqRu+
+                           $similarEn*
+                           (?: $anyRu | (?!$anyEnRu) )
+                       )
+                     | $anyRu
+                       $similarEn*
+                       $uniqRu+
+                       $similarRu*
+                       (?=
+                           $similarEn*
+                           $uniqEn+
+                           $similarRu*
+                           (?: $anyEn | (?!$anyEnRu) )
+                       )
+                    /suxSX";
+        return $pattern;
+    }
+
+    /**
+     * Квотирует строку для построения регулярного выражения с классом символов
+     *
+     * @param string      $chars
+     * @param string|null $delimiter
+     *
+     * @return string
+     */
+    protected static function pregQuoteClass(string $chars, ?string $delimiter = null) : string
+    {
+        $quoteTable = array(
+            '\\' => '\\\\',
+            '^'  => '\^',
+            '-'  => '\-',
+            ']'  => '\]',
+        );
+        if ($delimiter !== null) {
+            $quoteTable[$delimiter] = '\\' . $delimiter;
+        }
+        return strtr($chars, $quoteTable);
     }
 
 }

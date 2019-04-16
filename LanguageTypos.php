@@ -403,6 +403,31 @@ class LanguageTypos
         return is_array($chunks) ? $chunks : null;
     }
 
+    /**
+     * Переводит регистр символов строки, как в образце
+     *
+     * @param string $likeText  образец
+     * @param string $text
+     *
+     * @return string
+     */
+    public static function convertCaseLike(string $likeText, string $text) : string
+    {
+        //lowercase?
+        if (mb_strtolower($likeText) === $likeText) {
+            return mb_strtolower($text);
+        }
+        //Title
+        if (mb_convert_case($likeText, MB_CASE_TITLE) === $likeText) {
+            return mb_convert_case($text, MB_CASE_TITLE);
+        }
+        //UPPERCASE?
+        if (mb_strtoupper($likeText) === $likeText) {
+            return mb_strtoupper($text);
+        }
+        //mixed?
+        return $text;
+    }
 
     /**
      * Возвращает регулярное выражение для захвата слов на русском или английском языке
@@ -457,7 +482,8 @@ class LanguageTypos
                            $similarRu*
                            $uniqRu+
                            $similarEn*
-                           (?: $anyRu | (?!$anyEnRu) )
+                           $anyRu
+                           (?! .*? $uniqEn)
                        )
                      | $anyRu
                        $similarEn*
@@ -467,7 +493,8 @@ class LanguageTypos
                            $similarEn*
                            $uniqEn+
                            $similarRu*
-                           (?: $anyEn | (?!$anyEnRu) )
+                           $anyEn
+                           (?! .*? $uniqRu)
                        )
                     /suxSX";
         return $pattern;

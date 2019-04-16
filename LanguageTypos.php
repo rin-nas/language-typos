@@ -359,6 +359,9 @@ class LanguageTypos
         if (! is_array($words)) {
             return null;
         }
+        if (count($words) === 0) {
+            return $words;
+        }
         $wordsMap = [
             static::keyboardLayoutConvertEnRuAuto($text) => $text,
         ];
@@ -377,7 +380,7 @@ class LanguageTypos
     public static function getWords(string $text) : ?array
     {
         $matches = [];
-        if (! preg_match_all(static::getWordsEnRuPattern(), $text, $matches, PREG_SET_ORDER)) {
+        if (preg_match_all(static::getWordsEnRuPattern(), $text, $matches, PREG_SET_ORDER) === false) {
             return null;
         }
         $words = [];

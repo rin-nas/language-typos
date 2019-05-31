@@ -345,21 +345,39 @@ class LanguageTypos
     }
 
     /**
-     * @param string $text
+     * Возвращает слова в индексированном массиве,
+     * причём первые 2 элемента -- это исходный текст и текст в другой раскладке клавиатуры
      *
-     * @return string[]|null     Ассоциативный массив, где
-     *                             * ключи -- это слова в другой раскладке (en/ru) из поискового запроса
-     *                             * значения -- исходные слова из текста
+     * @param string[] $wordsMap  ассоц. массив, полученный в методе getWordsMap
+     *
+     * @return string[]
+     */
+    public static function getWordsAll(array $wordsMap): array
+    {
+        $wordsAll = [];
+        foreach ($wordsMap as $wordKeyboardLayouted => $word) {
+            $wordsAll[] = $word;
+            $wordsAll[] = $wordKeyboardLayouted;
+        }
+        return $wordsAll;
+    }
+
+    /**
+     * Возвращает ассоциативный массив, где
+     *   * ключи -- это слова в другой раскладке (en/ru) из поискового запроса
+     *   * значения -- исходные слова из текста
+     * @param string $text       Исходный текст
+     *
+     * @return string[]|null     Returns null if an error occurred
      * @throws \Exception
      */
     public static function getWordsMap(string $text) : ?array
     {
         $words = static::getWords($text);
-        //var_export($words); die; //отладка
         if (! is_array($words)) {
-            return null;
+            return null; //error
         }
-        if (count($words) === 0) {
+        if ($words === []) {
             return $words;
         }
         $wordsMap = [
@@ -373,15 +391,18 @@ class LanguageTypos
     }
 
     /**
+     * Для исходного текста возвращает слова.
+     * Если в тексте слов нет, то возвращает пустой массив.
+     *
      * @param string $text
      *
-     * @return string[]|null
+     * @return string[]|null   Returns null if an error occurred
      */
     public static function getWords(string $text) : ?array
     {
         $matches = [];
         if (preg_match_all(static::getWordsEnRuPattern(), $text, $matches, PREG_SET_ORDER) === false) {
-            return null;
+            return null; //error
         }
         $words = [];
         foreach ($matches as $match) {
@@ -408,28 +429,42 @@ class LanguageTypos
 
     /**
      * Переводит регистр символов строки, как в образце
+     * Умеет обрабатывать слова с дефисами
      *
      * @param string $likeText  образец
-     * @param string $text
+     * @param string $text      текст для корректировки,
+     *                          для $likeText и $text длина строки и кол-во дефисов может не совпадать
      *
      * @return string
      */
     public static function convertCaseLike(string $likeText, string $text) : string
     {
+        $limit = min(substr_count($likeText, '-'), substr_count($text, '-')) + 1;
+        $likeTextParts = explode('-', $likeText, $limit);
+        $textParts     = explode('-', $text, $limit);
+
+        for ($i = 0; $i < $limit; $i++) {
+            $textParts[$i] = static::convertCaseLikePart($likeTextParts[$i], $textParts[$i]);
+        }
+        return implode('-', $textParts);
+    }
+
+    private static function convertCaseLikePart(string $likeTextPart, string $textPart) : string
+    {
         //lowercase?
-        if (mb_strtolower($likeText) === $likeText) {
-            return mb_strtolower($text);
+        if (mb_strtolower($likeTextPart) === $likeTextPart) {
+            return mb_strtolower($textPart);
         }
         //Title
-        if (mb_convert_case($likeText, MB_CASE_TITLE) === $likeText) {
-            return mb_convert_case($text, MB_CASE_TITLE);
+        if (mb_convert_case($likeTextPart, MB_CASE_TITLE) === $likeTextPart) {
+            return mb_convert_case($textPart, MB_CASE_TITLE);
         }
         //UPPERCASE?
-        if (mb_strtoupper($likeText) === $likeText) {
-            return mb_strtoupper($text);
+        if (mb_strtoupper($likeTextPart) === $likeTextPart) {
+            return mb_strtoupper($textPart);
         }
         //mixed?
-        return $text;
+        return $textPart;
     }
 
     /**

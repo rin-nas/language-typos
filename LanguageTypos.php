@@ -412,16 +412,19 @@ class LanguageTypos
     }
 
     /**
-     * @param string $text
+     * Для исходного текста возвращает слова и разделители между словами.
+     *
+     * @param string   $text
+     * @param int|null $limit
      *
      * @return string[]|null
      */
-    public static function getChunks(string $text) : ?array
+    public static function getChunks(string $text, ?int $limit = null) : ?array
     {
         $chunks = preg_split(
             static::getWordsEnRuPattern(),
             $text,
-            null,
+            $limit,
             PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY
         );
         return is_array($chunks) ? $chunks : null;
@@ -429,7 +432,7 @@ class LanguageTypos
 
     /**
      * Переводит регистр символов строки, как в образце
-     * Умеет обрабатывать слова с дефисами
+     * Каждое слово обрабатывает отдельно
      *
      * @param string $likeText  образец
      * @param string $text      текст для корректировки,
@@ -439,17 +442,20 @@ class LanguageTypos
      */
     public static function convertCaseLike(string $likeText, string $text) : string
     {
-        $limit = min(substr_count($likeText, '-'), substr_count($text, '-')) + 1;
-        $likeTextParts = explode('-', $likeText, $limit);
-        $textParts     = explode('-', $text, $limit);
+        $likeTextChunks = static::getChunks($likeText);
+        $textChunks     = static::getChunks($text);
+        if ($likeTextChunks === null || $textChunks === null) { //error?
+            return $text;
+        }
+        $limit = min(count($likeTextChunks), count($textChunks));
 
         for ($i = 0; $i < $limit; $i++) {
-            $textParts[$i] = static::convertCaseLikePart($likeTextParts[$i], $textParts[$i]);
+            $textChunks[$i] = static::convertCaseLikeChunk($likeTextChunks[$i], $textChunks[$i]);
         }
-        return implode('-', $textParts);
+        return implode('', $textChunks);
     }
 
-    private static function convertCaseLikePart(string $likeTextPart, string $textPart) : string
+    private static function convertCaseLikeChunk(string $likeTextPart, string $textPart) : string
     {
         //lowercase?
         if (mb_strtolower($likeTextPart) === $likeTextPart) {
@@ -475,15 +481,19 @@ class LanguageTypos
      */
     protected static function getWordsEnRuPattern() : string
     {
-        static $pattern = null;
+        static $pattern = null; //cache
 
-        if (is_string($pattern)) {
+        if ($pattern !== null) {
             return $pattern;
         }
 
-        $chars = array_unique(array_merge(array_keys(static::$keyboardEnToRu), static::$keyboardEnToRu));
-        sort($chars);
-        $chars = preg_replace('~[a-zA-Zа-яёА-ЯЁ]+~suSX', '', implode('', $chars));
+        $chars = '';
+        foreach (static::$keyboardEnToRu as $k => $v) {
+            $chars .= $k . $v . PHP_EOL;
+        }
+        $chars = preg_replace('~[^a-zA-Zа-яёА-ЯЁ]{2}\n~suSX', '', $chars);
+        $chars = preg_replace('~[a-zA-Zа-яёА-ЯЁ\n]+~suSX', '', $chars);
+
         $chars = static::pregQuoteClass($chars, '~');
         $charsEn = '(?<en>[a-zA-Z'   . $chars . ']+)';
         $charsRu = '(?<ru>[а-яёА-ЯЁ' . $chars . ']+)';
@@ -499,9 +509,9 @@ class LanguageTypos
      */
     protected static function getSplitEnRuWordPattern() : string
     {
-        static $pattern = null;
+        static $pattern = null; //cache
 
-        if (is_string($pattern)) {
+        if ($pattern !== null) {
             return $pattern;
         }
 

@@ -2,6 +2,8 @@
 
 namespace Cms\Utils;
 
+use Exception;
+
 /**
  *
  * @package Cms\Utils
@@ -442,20 +444,17 @@ class LanguageTypos
      */
     public static function convertCaseLike(string $likeText, string $text) : string
     {
-        $likeTextChunks = static::getChunks($likeText);
-        $textChunks     = static::getChunks($text);
-        if ($likeTextChunks === null || $textChunks === null) { //error?
-            return $text;
-        }
-        $limit = min(count($likeTextChunks), count($textChunks));
+        $limit = min(substr_count($likeText, '-'), substr_count($text, '-')) + 1;
+        $likeTextParts = explode('-', $likeText, $limit);
+        $textParts = explode('-', $text, $limit);
 
         for ($i = 0; $i < $limit; $i++) {
-            $textChunks[$i] = static::convertCaseLikeChunk($likeTextChunks[$i], $textChunks[$i]);
+            $textParts[$i] = static::convertCaseLikePart($likeTextParts[$i], $textParts[$i]);
         }
-        return implode('', $textChunks);
+        return implode('-', $textParts);
     }
 
-    private static function convertCaseLikeChunk(string $likeTextPart, string $textPart) : string
+    private static function convertCaseLikePart(string $likeTextPart, string $textPart) : string
     {
         //lowercase?
         if (mb_strtolower($likeTextPart) === $likeTextPart) {
@@ -495,7 +494,7 @@ class LanguageTypos
         $chars = preg_replace('~[a-zA-Zа-яёА-ЯЁ\n]+~suSX', '', $chars);
 
         $chars = static::pregQuoteClass($chars, '~');
-        $charsEn = '(?<en>[a-zA-Z'   . $chars . ']+)';
+        $charsEn = '(?<en>[a-zA-Z' . $chars . ']+)';
         $charsRu = '(?<ru>[а-яёА-ЯЁ' . $chars . ']+)';
         $pattern = '~' . $charsEn . '|' . $charsRu . '~suSX';
         return $pattern;

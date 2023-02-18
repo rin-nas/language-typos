@@ -47,7 +47,7 @@ class LanguageTypos
      * @var string[]
      */
     private static $keyboardEnToRu = [
-        #[CapsLock] off
+        //[CapsLock] off
         '`' => 'ё',
         'q' => 'й',
         'w' => 'ц',
@@ -83,7 +83,7 @@ class LanguageTypos
         '.' => 'ю',
         '/' => '.',
 
-        #[CapsLock] on
+        //[CapsLock] on
         '~' => 'Ё',
         '@' => '"',
         '#' => '№',
